@@ -14,5 +14,6 @@ conda install -f environment.yml
 ## Training
 ## Acknowledgement
 [StyleGAN2 &mdash; Pytorch implementation](https://github.com/rosinality/stylegan2-pytorch) by rosinality
+
 [Pytorch plugins provided by StyleGAN2-ADA-Pytorch](https://github.com/NVlabs/stylegan2-ada-pytorch)
 ## Contact

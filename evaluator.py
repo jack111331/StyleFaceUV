@@ -16,9 +16,9 @@ from trainer_pose_scalar import BestFirstPoseScalarCheckpointSaver
 from trainer_multi_pose_scalar import BestFirstMultiPoseScalarCheckpointSaver
 
 
-from network.arch import Generator2D, Generator3D
-from network.arch import StylecodeToPoseDirectionScalarMLP, StylecodeToMultiPoseDirectionScalarMLP, StylecodeTo3DMMCoeffMLP
-from network.arch_3DMM import Pure_3DMM, Pure_3DMM_UV
+from model.face_renderer import FaceRenderer
+from model.stylegan2 import Generator2D
+from model.stylegan2_texture import Generator3D, StylecodeToPoseDirectionScalarMLP, StylecodeToMultiPoseDirectionScalarMLP, StylecodeTo3DMMCoeffMLP
 from utils.losses import *
 from utils.utility import output_grid_img_from_tensor, ensure_dir_exist, output_img_from_tensor, output_3dmm_img_from_tensor
 
@@ -40,8 +40,7 @@ class Evaluator(object):
                 optimizers={})
 
         facemodel = scipy.io.loadmat(self.options.FACE_MODEL_PATH)
-        self.pure_3dmm_model = Pure_3DMM(facemodel).to(self.device)
-        self.pure_3dmm_uv_model = Pure_3DMM_UV(facemodel).to(self.device)
+        self.pure_3dmm_uv_model = FaceRenderer(facemodel).to(self.device)
         self.pure_3dmm_uv_model.eval()
 
         self.stylecode_to_scalar_model = StylecodeToPoseDirectionScalarMLP().to(self.device)
@@ -116,22 +115,6 @@ class Evaluator(object):
         # gradmask = gradmask.permute(1,2,0).detach().cpu().numpy()
         # cv2.imwrite('./testing/image%04d.png'%(idx),gradmask*255)
         return gradmask
-
-    def test_3dcoeff(self):
-        self.stylecode_to_3dmm_coeff_model.eval()
-        self.g_ema_2d.eval()
-        self.pure_3dmm_model.eval()
-        for i in range(10):
-            wplus = self.g_ema_2d.get_latent_Wplus(torch.randn(1, 512).to(self.device))
-            coeff = self.stylecode_to_3dmm_coeff_model(torch.flatten(wplus, start_dim=1))
-            image, _ = self.g_ema_2d(wplus, truncation=1, truncation_latent=None, input_is_Wplus=True)
-            test_output_dir = os.path.join(self.options.test_output_dir, "3dcoeff")
-            ensure_dir_exist(test_output_dir)
-            output_img_from_tensor(image, os.path.join(test_output_dir, 'stylegan_image%02d.png' % (i)))
-
-            x = {'coeff': coeff}
-            rendered_img, _, _, _, _, _ = self.pure_3dmm_model(x)
-            output_3dmm_img_from_tensor(rendered_img, os.path.join(test_output_dir, '3dmm_image%02d.png' % (i)))
 
     def test_pose_scalar(self):
         check_data = []
@@ -223,7 +206,7 @@ class Evaluator(object):
     def test_stylegan2_to_3d_expression(self, amount=1):
         def offset_expression_at_dimension(coeff, dim, val):
             new_coeff = coeff.clone().detach()
-            id_coeff, ex_coeff, tex_coeff, angles, gamma, translation = Pure_3DMM.Split_coeff(new_coeff)
+            id_coeff, ex_coeff, tex_coeff, angles, gamma, translation = FaceRenderer.Split_coeff(new_coeff)
             ex_coeff[:, dim] += val
             return new_coeff
 
@@ -277,7 +260,7 @@ class Evaluator(object):
     def test_stylegan2_to_3d_lighting(self, amount=1):
         def offset_lighting_at_dimension(coeff, dim, val):
             new_coeff = coeff.clone().detach()
-            id_coeff, ex_coeff, tex_coeff, angles, gamma, translation = Pure_3DMM.Split_coeff(new_coeff)
+            id_coeff, ex_coeff, tex_coeff, angles, gamma, translation = FaceRenderer.split_3dmm_coeff(new_coeff)
             gamma[:, dim] += val
             gamma[:, dim + 9] += val
             gamma[:, dim + 18] += val
@@ -359,7 +342,7 @@ class Evaluator(object):
     def test_stylegan2_to_3d_lighting_variation(self, amount=1):
         def offset_lighting_at_dimension(coeff, dim, val):
             new_coeff = coeff.clone().detach()
-            id_coeff, ex_coeff, tex_coeff, angles, gamma, translation = Pure_3DMM.Split_coeff(new_coeff)
+            id_coeff, ex_coeff, tex_coeff, angles, gamma, translation = FaceRenderer.split_3dmm_coeff(new_coeff)
             gamma[:, dim] += val
             gamma[:, dim + 9] += val
             gamma[:, dim + 18] += val
@@ -434,7 +417,7 @@ class Evaluator(object):
     def test_stylegan2_to_3d_lighting_variation_animate(self, amount=1):
         def offset_lighting_at_dimension(coeff, dim, val):
             new_coeff = coeff.clone().detach()
-            id_coeff, ex_coeff, tex_coeff, angles, gamma, translation = Pure_3DMM.Split_coeff(new_coeff)
+            id_coeff, ex_coeff, tex_coeff, angles, gamma, translation = FaceRenderer.split_3dmm_coeff(new_coeff)
             gamma[:, dim] += val
             gamma[:, dim + 9] += val
             gamma[:, dim + 18] += val
@@ -523,7 +506,7 @@ class Evaluator(object):
     def test_stylegan2_to_3d_expression_variation(self, amount=1):
         def offset_expression_at_dimension(coeff, dim, val):
             new_coeff = coeff.clone().detach()
-            id_coeff, ex_coeff, tex_coeff, angles, gamma, translation = Pure_3DMM.Split_coeff(new_coeff)
+            id_coeff, ex_coeff, tex_coeff, angles, gamma, translation = FaceRenderer.split_3dmm_coeff(new_coeff)
             ex_coeff[:, dim] = val
             return new_coeff
 
@@ -587,7 +570,7 @@ class Evaluator(object):
     def test_stylegan2_to_3d_expression_variation_animate(self, amount=1):
         def offset_expression_at_dimension(coeff, dim, val):
             new_coeff = coeff.clone().detach()
-            id_coeff, ex_coeff, tex_coeff, angles, gamma, translation = Pure_3DMM.Split_coeff(new_coeff)
+            id_coeff, ex_coeff, tex_coeff, angles, gamma, translation = FaceRenderer.split_3dmm_coeff(new_coeff)
             ex_coeff[:, dim] = val
             return new_coeff
 
@@ -672,7 +655,7 @@ class Evaluator(object):
     def test_stylegan2_to_3d_interpolation(self, amount=1):
         def refill_lighting(coeff):
             new_coeff = coeff.clone().detach()
-            id_coeff, ex_coeff, tex_coeff, angles, gamma, translation = Pure_3DMM.Split_coeff(new_coeff)
+            id_coeff, ex_coeff, tex_coeff, angles, gamma, translation = FaceRenderer.split_3dmm_coeff(new_coeff)
             gamma[:, :] = 0.045
             return new_coeff
 
@@ -757,7 +740,7 @@ class Evaluator(object):
 
         def refill_lighting(coeff):
             new_coeff = coeff.clone().detach()
-            id_coeff, ex_coeff, tex_coeff, angles, gamma, translation = Pure_3DMM.Split_coeff(new_coeff)
+            id_coeff, ex_coeff, tex_coeff, angles, gamma, translation = FaceRenderer.split_3dmm_coeff(new_coeff)
             gamma[:, :] = 0.045
             return new_coeff
 
@@ -813,7 +796,7 @@ class Evaluator(object):
     def test_fig3_both(self, amount=1):
         def refill_lighting(coeff):
             new_coeff = coeff.clone().detach()
-            id_coeff, ex_coeff, tex_coeff, angles, gamma, translation = Pure_3DMM.Split_coeff(new_coeff)
+            id_coeff, ex_coeff, tex_coeff, angles, gamma, translation = FaceRenderer.split_3dmm_coeff(new_coeff)
             gamma[:, :] = 0.045
             return new_coeff
         for num in np.arange(amount).tolist():

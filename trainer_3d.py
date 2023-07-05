@@ -9,9 +9,9 @@ import lpips
 
 from utils.options import Option
 from utils.base_trainer import GANBaseTrainer
-from network.arch import Generator2D, Generator3D, Discriminator3D
-from network.arch import StylecodeToPoseDirectionScalarMLP, StylecodeTo3DMMCoeffMLP
-from network.arch_3DMM import Pure_3DMM_UV
+from model.face_renderer import FaceRenderer
+from model.stylegan2 import Generator2D
+from model.stylegan2_texture import Generator3D, Discriminator3D, StylecodeToPoseDirectionScalarMLP, StylecodeTo3DMMCoeffMLP
 from utils.losses import *
 from utils.utility import output_grid_img_from_tensor, ensure_dir_exist
 from dataloader.dataset import StyleCodeImage3DMMParamsPoseDirDataset
@@ -39,7 +39,7 @@ class Trainer(GANBaseTrainer):
         self.optimizer_g = torch.optim.Adam(self.g_ema.parameters(), lr=self.options.l_rate)
         self.optimizer_d = torch.optim.Adam(self.discriminator.parameters(), lr=self.options.l_rate)
         facemodel = scipy.io.loadmat(self.options.FACE_MODEL_PATH)
-        self.pure_3dmm_model = Pure_3DMM_UV(facemodel).to(self.device)
+        self.pure_3dmm_model = FaceRenderer(facemodel).to(self.device)
 
         self.stylecode_to_scalar_model = StylecodeToPoseDirectionScalarMLP().to(self.device)
         stylecode_to_scalar_saver = BestFirstPoseScalarCheckpointSaver(self.options.stylecode_pose_scalar_mlp_ckpt)
