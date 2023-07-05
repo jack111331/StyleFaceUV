@@ -1,0 +1,24 @@
+name: style_face_uv
+channels:
+  - nvidia
+  - pytorch3d
+  - pytorch
+  - iopath
+  - conda-forge
+  - defaults
+dependencies:
+  - pytorch=1.8.1=py3.8_cuda10.1_cudnn7.6.3_0 
+  - cudatoolkit=10.1 
+  - torchvision=0.9.1=py38_cu101
+  - pytorch3d=0.6.2=py38_cu101_pyt181
+  - fvcore
+  - iopath
+pip:
+  - scipy==1.5.4
+  - lpips==0.1.3
+  - imageio
+  - opencv-python==4.5.1.48
+  - lmdb
+  - requests
+
+prefix: /tmp2/r10922033/anaconda3/envs/style_face_uv

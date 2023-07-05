@@ -1,0 +1,13 @@
+*.pt
+.idea/
+*.pyc
+*.txt
+*.pkl
+*.mat
+*.png
+*.jpg
+*.gif
+*.sh
+*.mdb
+environment_all.yml
+torch_extensions/
