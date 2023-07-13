@@ -14,12 +14,19 @@ from pytorch3d.renderer import (
     blending,
 )
 import torch.nn.functional as F
+import scipy.io
 
 # TODO 3DMM model taken from ...
 class FaceRenderer(nn.Module):
-    def __init__(self, face_model, focal=1015, image_size=256, device='cuda'):
+    def __init__(self, 
+                 facemodel_path, 
+                 refined_uv_coord_path,
+                 focal=1015, 
+                 image_size=256, 
+                 device='cuda'):
+        
         super(FaceRenderer, self).__init__()
-        self.facemodel = face_model
+        self.facemodel = scipy.io.loadmat(facemodel_path)
         self.focal = focal
         self.img_size = image_size
         self.device = torch.device(device)
@@ -41,6 +48,20 @@ class FaceRenderer(nn.Module):
         self.register_parameter('texBase', texBase)
         self.register_parameter('tri', tri)
         self.register_parameter('point_buf', point_buf)
+
+        self.uv_coord_2 = torch.tensor(scipy.io.loadmat(refined_uv_coord_path)['UV_refine'])
+        self.uv_coord_2 = self.process_uv(self.uv_coord_2)
+        self.uv_coord_2 = self.uv_coord_2[:, :2] / 255. * 2 - 1
+        self.uv_coord_2 = torch.unsqueeze(torch.tensor(self.uv_coord_2), 0).type('torch.DoubleTensor').to(self.device)
+        self.uv_coord_2 = torch.unsqueeze(self.uv_coord_2, 1)
+
+    @staticmethod
+    def process_uv(uv_coords, uv_h=256, uv_w=256):
+        uv_coords[:, 0] = uv_coords[:, 0] * (uv_w - 1)
+        uv_coords[:, 1] = uv_coords[:, 1] * (uv_h - 1)
+        uv_coords[:, 1] = uv_h - uv_coords[:, 1] - 1
+        uv_coords = np.hstack((uv_coords, np.zeros((uv_coords.shape[0], 1))))  # add z
+        return uv_coords
 
     def get_renderer(self, device):
         R, T = look_at_view_transform(10, 0, 0)
@@ -259,20 +280,14 @@ class FaceRenderer(nn.Module):
         lms = face_shape[:, kp_inds, :]
         return lms
 
-    def forward(self, x):
-        coeff = x['coeff']
-        uvmap = x['uvmap']
-        uv_displace_map = x['uv_displace_map']
-        uv_coord_2 = x['uv_coord_2']
-        need_illu = True
-        if x.get('need_illu') is not None:
-            need_illu = x['need_illu']
-        batch_num = coeff.shape[0]
-        id_coeff, ex_coeff, _, angles, gamma, translation = self.split_3dmm_coeff(coeff)
+    def forward(self, coeff_3dmm, diffuse_map, displacement_map, need_illu=True):
+        batch_num = coeff_3dmm.shape[0]
+        uv_coord_2 = self.uv_coord_2.repeat(batch_num, 1, 1, 1)
+        id_coeff, ex_coeff, _, angles, gamma, translation = self.split_3dmm_coeff(coeff_3dmm)
         face_shape_ori = self.shape_formation(id_coeff, ex_coeff) #(b, 35709, 3)
 
         # Apply displacement on the shape texture
-        uv_vertex = F.grid_sample(uv_displace_map, uv_coord_2.float(), mode='bilinear')
+        uv_vertex = F.grid_sample(displacement_map, uv_coord_2.float(), mode='bilinear')
         uv_vertex = torch.squeeze(uv_vertex, 2)
         uv_vertex = uv_vertex.permute(0,2,1)
         uv_vertex*= torch.tensor(0.01).to(self.device)
@@ -289,7 +304,7 @@ class FaceRenderer(nn.Module):
         lms = torch.stack([lms[:, :, 0], self.img_size-lms[:, :, 1]], dim=2)
         tri = self.tri - 1
 
-        face_texture = F.grid_sample(uvmap.permute(0,3,1,2), uv_coord_2.float(), mode='bilinear')
+        face_texture = F.grid_sample(diffuse_map.permute(0,3,1,2), uv_coord_2.float(), mode='bilinear')
         face_texture = torch.squeeze(face_texture, 2)
         face_texture = face_texture.permute(0,2,1)
         if need_illu==True:
@@ -301,4 +316,4 @@ class FaceRenderer(nn.Module):
         mesh = Meshes(verts=face_shape_t, faces=tri.repeat(batch_num, 1, 1), textures=face_color) # Meshes(Vertex, Faces, Texture)
         rendered_img = self.renderer(mesh) # 應是設定好了從canonical view來project
         rendered_img = torch.clamp(rendered_img, 0, 255)
-        return rendered_img, lms, face_shape, mesh, coeff, tri
+        return rendered_img, lms, face_shape, mesh, coeff_3dmm, tri

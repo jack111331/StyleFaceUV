@@ -1,0 +1,32 @@
+model:
+  learning_rate: 1.0e-03
+  n_critic: 1
+  n_critic_d: 5
+  d_reg_every: 16
+  photo_weight: 10.0
+  target: model.stylegan2_texture.StyleFaceUV
+  params:
+    pose_direction_path: data/pose_direction-new.pkl
+    uvmask_path: data/mask.png
+    size: 256
+    latent_dim: 512
+    n_mlp: 8
+    gan_ckpt_path: ckpt/StyleGAN2_ffhq_resol=256_550000.pt
+
+    style_to_pose_scalar_config:
+      target: model.stylegan2_texture.StylecodeToPoseDirectionScalarMLP
+      params: 
+        ckpt_path: ckpt/stylecode_pose_scalar_mlp/best.pkl
+
+    style_to_3dmm_coeff_config:
+      target: model.stylegan2_texture.StylecodeTo3DMMCoeffMLP
+      params: 
+        ckpt_path: ckpt/stylecode_3dmm_coeff_mlp/best.pkl
+
+    face_renderer_config:
+      target: model.face_renderer.FaceRenderer
+      params:
+        facemodel_path: data/BFM_model_front.mat
+        refined_uv_coord_path: data/BFM_UV_refined.mat
+        focal: 1015
+        image_size: 256

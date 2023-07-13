@@ -29,9 +29,9 @@ def dispatch_work(index):
 
 class StyleCodeImage3DMMParamsPoseDirDataset(Dataset):
     def __init__(self, data_dir, clean=False):
+        # TODO
         self.stylecodes = torch.load(os.path.join(data_dir, 'tensor-new.pkl'))
         self.coeffs = torch.load(os.path.join(data_dir, '3DMMparam-new.pkl'))
-        # FIXME Refactor
         self.env = lmdb.open(
             os.path.join(data_dir, 'lmdb'),
             max_readers=32,
@@ -40,43 +40,39 @@ class StyleCodeImage3DMMParamsPoseDirDataset(Dataset):
             readahead=False,
             meminit=False,
         )
-        transform = transforms.Compose(
+        self.transform = transforms.Compose(
             [
                 #transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True), #(-1, 1)
             ]
         )
-        n_worker = 8
-        cnt = 0
         with self.env.begin(write=False) as txn:
-            size = int(txn.get('size'.encode('utf-8')).decode('utf-8'))
+            self.size = int(txn.get('size'.encode('utf-8')).decode('utf-8'))
 
         yaws = self.coeffs[:, 225].detach().numpy()
+
         if clean == True:
             indices = np.where(np.abs(yaws) < 0.5236)[0] # 30 degrees in radian
+            self.indices_mapping = {}
+            for idx, clean_idx in enumerate(indices):
+                self.indices_mapping[idx] = clean_idx
         else:
-            indices = np.arange(yaws.shape[0])
-        self.data = {}
-
-        with multiprocessing.Pool(n_worker) as pool:
-            for i in pool.imap_unordered(dispatch_work, indices):
-                with self.env.begin(write=False) as txn:
-                    key = f'{str(i).zfill(5)}'.encode('utf-8')
-                    img = np.frombuffer(txn.get(key), dtype=np.uint8)
-                    img = Image.fromarray(img.reshape(size, size, 3))
-                    img = transform(img)
-                    img = (img+1)/2
-                    self.data[i] = [self.stylecodes[i], img, self.coeffs[i]]
-        self.data = list(self.data.values())
-        self.cnt = len(self.data)
+            self.indices_mapping = np.arange(yaws.shape[0])
+        self.cnt = len(self.indices_mapping)
 
     def __len__(self):
         return self.cnt
-        #return int(self.img.size(0)*1)
 
     def __getitem__(self, idx):
-        return self.data[idx]
+        clean_idx = self.indices_mapping[idx]
+        with self.env.begin(write=False) as txn:
+            key = f'{str(clean_idx).zfill(5)}'.encode('utf-8')
+            img = np.frombuffer(txn.get(key), dtype=np.uint8)
+        img = Image.fromarray(img.reshape(self.size, self.size, 3))
+        img = self.transform(img)
+        img = (img+1)/2
+        return self.stylecodes[clean_idx], img, self.coeffs[clean_idx]
 
 if __name__ == '__main__':
     dataset = StyleCodeImage3DMMParamsPoseDirDataset('./data/', clean=True)

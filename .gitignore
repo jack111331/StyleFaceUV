@@ -11,3 +11,5 @@
 *.mdb
 environment_all.yml
 torch_extensions/
+nohup.out
+ckpt/
