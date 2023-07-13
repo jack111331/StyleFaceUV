@@ -346,13 +346,13 @@ class StyleFaceUV(pl.LightningModule):
             diffuse_map = generated_texture_maps[0]
             diffuse_map = (diffuse_map + 1) / 2
             diffuse_map = einops.rearrange(diffuse_map, 'b c h w -> b h w c')
+
         if displacement_map is None:
-            displacement_map = generated_texture_maps[0]
+            displacement_map = generated_texture_maps[1]
 
         rendered_img, _, _, _, _, _ = self.pure_3dmm_model(coeff_3dmm, diffuse_map, displacement_map)
         rendered_mask = rendered_img[:, :, :, 3:4].detach()
         rendered_mask = (rendered_mask > 0)
-        rendered_mask = rendered_mask.repeat((1, 1, 1, 3))
         rendered_mask = einops.rearrange(rendered_mask, 'b h w c -> b c h w')
         recon_image = rendered_img[:, :, :, :3]
         recon_image = einops.rearrange(recon_image, 'b h w c -> b c h w')
@@ -375,19 +375,16 @@ class StyleFaceUV(pl.LightningModule):
             optimizer_d.zero_grad()
 
             recon_image, rendered_mask, diffuse_map, displacement_map = self(style_code, coeff_3dmm, output_texture_maps=True)
-            recon_image = (recon_image * 2) - 1
-            masked_sample_image = sampled_image * rendered_mask
-            masked_sample_image = (masked_sample_image * 2) - 1
-            real_pred = self.discriminator_3d(masked_sample_image)
-            fake_pred = self.discriminator_3d(recon_image)
+            masked_sample_image = sampled_image * rendered_mask.repeat((1, 3, 1, 1))
+
+            real_pred = self.discriminator_3d(masked_sample_image * 2 - 1)
+            fake_pred = self.discriminator_3d(recon_image * 2 - 1)
             d_loss = d_logistic_loss(real_pred, fake_pred)
 
             sym_recon_image, rendered_sym_mask = self(None, sym_coeff_3dmm.detach(), diffuse_map=diffuse_map, displacement_map=displacement_map, output_texture_maps=False)
-            sym_recon_image = (sym_recon_image * 2) - 1
             masked_sym_sampled_img = sym_sampled_image * rendered_sym_mask
-            masked_sym_sampled_img = (masked_sym_sampled_img * 2) - 1
-            sym_real_pred = self.discriminator_3d(masked_sym_sampled_img)
-            sym_fake_pred = self.discriminator_3d(sym_recon_image)
+            sym_real_pred = self.discriminator_3d(masked_sym_sampled_img * 2 - 1)
+            sym_fake_pred = self.discriminator_3d(sym_recon_image * 2 - 1)
             sym_d_loss = d_logistic_loss(sym_real_pred, sym_fake_pred)
 
             total_d_loss = 0.75 * sym_d_loss + d_loss
@@ -397,7 +394,8 @@ class StyleFaceUV(pl.LightningModule):
 
             if batch_idx % (self.n_critic_d * self.d_reg_every) == 0:
                 optimizer_d.zero_grad()
-                masked_sample_image = sampled_image * rendered_mask
+
+                masked_sample_image = sampled_image * rendered_mask.repeat((1, 3, 1, 1))
                 masked_sample_image = (masked_sample_image * 2) - 1
                 masked_sample_image.requires_grad = True
                 real_pred = self.discriminator_3d(masked_sample_image)
@@ -421,45 +419,27 @@ class StyleFaceUV(pl.LightningModule):
             self.requires_grad(self.generator_3d, True)
             self.requires_grad(self.discriminator_3d, False)
             optimizer_g.zero_grad()
-            # _, _, diffuse_map, displacement_map = self(style_code, coeff_3dmm)
-            diffuse_map, displacement_map = self.generator_3d(style_code, truncation=1, truncation_latent=None, input_is_Wplus=True,
-                                                return_uv=True)
-            diffuse_map = (diffuse_map + 1) / 2
-            diffuse_map = einops.rearrange(diffuse_map, 'b c h w -> b h w c')
-
-            rendered_img, _, _, _, _, _ = self.pure_3dmm_model(coeff_3dmm, diffuse_map, displacement_map)
-            rendered_mask = rendered_img[..., 3].detach()
-            recon_image = rendered_img[..., :3]
-            recon_image = einops.rearrange(recon_image, 'b h w c -> b c h w')
+            recon_image, rendered_mask, diffuse_map, displacement_map = self(style_code, coeff_3dmm)
 
             fake_pred = self.discriminator_3d(recon_image * 2 - 1)
             g_loss = g_nonsaturating_loss(fake_pred)
 
-            stylerig_photo_loss_v = photo_loss(rendered_img[..., :3] * 255, (einops.rearrange(sampled_image, 'b c h w -> b h w c') * 255).detach(), rendered_mask > 0)
+            stylerig_photo_loss_v = photo_loss(einops.rearrange(recon_image, 'b c h w -> b h w c'), (einops.rearrange(sampled_image, 'b c h w -> b h w c')).detach(), torch.squeeze(rendered_mask, dim=1))
 
-            image_percept = sampled_image * einops.rearrange(torch.unsqueeze(rendered_mask > 0, 3).repeat(1, 1, 1, 3), 'b h w c -> b c h w')
-            image_percept = image_percept * 2 - 1
-            rendered_percept = (rendered_img[..., :3] * 2 - 1)
-            rendered_percept = einops.rearrange(rendered_percept, 'b h w c -> b c h w')
-            perceptual_loss_v = torch.mean(self.PerceptLoss(image_percept, rendered_percept))
+            image_percept = sampled_image * rendered_mask.repeat(1, 3, 1, 1)
+            perceptual_loss_v = torch.mean(self.PerceptLoss(image_percept * 2 - 1, recon_image * 2 - 1))
 
             sym_gradleftmask = torch.unsqueeze(sym_gradleftmask, 3).repeat(1, 1, 1, 3)
             weighted_mask, _, _, _, _, _ = self.pure_3dmm_model(sym_coeff_3dmm, sym_gradleftmask, displacement_map, need_illu=False)
             weighted_mask = weighted_mask[..., 0].detach()
-            sym_rendered_img, _, _, _, _, _ = self.pure_3dmm_model(sym_coeff_3dmm.detach(), diffuse_map, displacement_map)
-            sym_recon_image = sym_rendered_img[..., :3]
-            sym_recon_image = einops.rearrange(sym_recon_image, 'b h w c -> b c h w')
-            sym_recon_image = (sym_recon_image * 2) - 1
-            sym_fake_pred = self.discriminator_3d(sym_recon_image)
+
+            sym_recon_image, rendered_sym_mask = self(None, sym_coeff_3dmm.detach(), diffuse_map=diffuse_map, displacement_map=displacement_map, output_texture_maps=False)
+            sym_fake_pred = self.discriminator_3d(sym_recon_image * 2 - 1)
             sym_g_loss = g_nonsaturating_loss(sym_fake_pred)
 
-            sym_stylerig_photo_loss_v = photo_loss(sym_rendered_img[..., :3] * 255, (einops.rearrange(sym_sampled_image, 'b c h w -> b h w c') * 255).detach(), weighted_mask)
-            rendered_sym_mask = sym_rendered_img[..., 3].detach()
-            sym_sampled_image_percept = sym_sampled_image * einops.rearrange(torch.unsqueeze(rendered_sym_mask > 0, 3).repeat(1, 1, 1, 3), 'b h w c -> b c h w')
-            sym_sampled_image_percept = sym_sampled_image_percept * 2 - 1
-            sym_rendered_percept = sym_rendered_img[..., :3] * 2 - 1
-            sym_rendered_percept = einops.rearrange(sym_rendered_percept, 'b h w c -> b c h w')
-            sym_perceptual_loss_v = torch.mean(self.PerceptLoss(sym_sampled_image_percept, sym_rendered_percept))
+            sym_stylerig_photo_loss_v = photo_loss(einops.rearrange(sym_recon_image, 'b c h w -> b h w c'), (einops.rearrange(sym_sampled_image, 'b c h w -> b h w c')).detach(), weighted_mask)
+            sym_sampled_image_percept = sym_sampled_image * rendered_sym_mask.repeat(1, 3, 1, 1)
+            sym_perceptual_loss_v = torch.mean(self.PerceptLoss(sym_sampled_image_percept * 2 - 1, sym_recon_image * 2 - 1))
 
             loss = 0.75 * sym_g_loss + g_loss + self.photo_weight * (
                     stylerig_photo_loss_v + 0.75 * sym_stylerig_photo_loss_v + 0.2 * perceptual_loss_v + 0.2 * 0.75 * sym_perceptual_loss_v)
@@ -468,7 +448,6 @@ class StyleFaceUV(pl.LightningModule):
             optimizer_g.step()
 
         self.log_dict(self.loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=True)
-
 
     def synthesize_sym_view_img(self, style_code, coeff_3dmm):
         batch_size = style_code.shape[0]
@@ -509,14 +488,26 @@ class StyleFaceUV(pl.LightningModule):
         device = self.device
         style_code, image, coeff_3dmm = style_code.to(device), image.to(device), coeff_3dmm.to(device)
 
-        diffuse_map, displacement_map = self.generator_3d(style_code, truncation=1, truncation_latent=None, input_is_Wplus=True,
-                                            return_uv=True)
-        diffuse_map = (diffuse_map + 1) / 2
-        diffuse_map = diffuse_map.permute(0, 2, 3, 1)
-        rendered_img, _, _, _, _, _ = self.pure_3dmm_model(coeff_3dmm, diffuse_map, displacement_map)
-        recon_image = rendered_img[..., :3].permute(0, 3, 1, 2)
+        recon_image, _ = self(style_code, coeff_3dmm, output_texture_maps=False)
         return recon_image, image
 
+    def validation_step(self, batch, batch_idx):
+        # First we sample from original stylegan2 and measure reconstruction loss
+        # Masked image's SSIM, PSNR, L2, LPIPS
+        style_code, sampled_image, coeff_3dmm = batch
+        sampled_image = sampled_image.float()
+
+        val_loss_dict = {}
+
+        recon_image, rendered_mask = self(style_code, coeff_3dmm, output_texture_maps=False)
+        val_loss_dict["val/l2_loss"] = photo_loss(einops.rearrange(recon_image, 'b c h w -> b h w c'), (einops.rearrange(sampled_image, 'b c h w -> b h w c')).detach(), torch.squeeze(rendered_mask, dim=1))
+
+        image_percept = sampled_image * rendered_mask.repeat(1, 3, 1, 1)
+        val_loss_dict["val/percept_loss"] = torch.mean(self.PerceptLoss(image_percept * 2 - 1, recon_image * 2 - 1))
+
+        self.log_dict(val_loss_dict, logger=True, on_epoch=True)
+
+        # TODO In future plan we measure kid, fid
 
 # FIXME refactor
 class StylecodeTo3DMMCoeffMLP(nn.Module):

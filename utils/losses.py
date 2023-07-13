@@ -8,6 +8,8 @@ import cv2
 import torch.autograd as autograd
 warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning) 
 def photo_loss(pred_img, gt_img, img_mask):
+    pred_img = pred_img * 255
+    gt_img = gt_img * 255
     pred_img = pred_img.float()
     loss = torch.sqrt(torch.sum(torch.square(pred_img - gt_img), 3)+1e-8 )*img_mask/255
     loss = torch.sum(loss, dim=(1, 2)) / (torch.sum(img_mask, dim=(1, 2)))

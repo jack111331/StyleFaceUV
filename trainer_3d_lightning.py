@@ -85,7 +85,9 @@ if __name__ == '__main__':
 
     dataset = StyleCodeImage3DMMParamsPoseDirDataset(dataset_dir, clean=True)
     data_loaders = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=12)
+    # FIXME prepare another validation dataset, sample 1K StyleGAN2 image
+    val_data_loaders = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=12)
 
     trainer = pl.Trainer(default_root_dir="ckpt/style_face_uv", gpus=1, max_epochs=25, callbacks=[LogImageCallback(), SetupCallback(True, ckptdir='ckpt/style_face_uv/test_ckpt')])
-    trainer.fit(model, data_loaders)
+    trainer.fit(model, data_loaders, val_data_loaders)
 

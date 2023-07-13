@@ -23,5 +23,7 @@ pip:
   - requests
   - numpy==1.20.0
   - einops
+  - face_alignment==1.1.1
+  - facenet-pytorch
 
 prefix: /tmp2/r10922033/anaconda3/envs/style_face_uv
