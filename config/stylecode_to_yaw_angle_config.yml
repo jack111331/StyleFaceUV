@@ -1,0 +1,19 @@
+trainer:
+  learning_rate: 1.0e-03
+  batch_size: 16
+  train_proportion: 0.9
+  target: trainer_yaw_pose_scalar_lightning.StylecodeToYawAngleTrainer
+  params:
+    pose_direction_path: data/pose_direction-new.pkl
+    style_to_3dmm_coeff_config:
+      target: model.stylegan2_texture.StylecodeTo3DMMCoeffMLP
+      params:
+        ckpt_path: ckpt/stylecode_to_3dmm_coeff/lightning_logs/version_0/checkpoints/epoch=24-step=55674.ckpt
+    style_to_yaw_angle_config:
+      target: model.stylegan2_texture.StylecodeToPoseDirectionScalarMLP
+
+  dataset_config:
+    target: dataloader.dataset.StyleCode3DMMParamsDataset
+    params:
+      coeff_3dmm_path: data/3DMMparam-new.pkl
+      stylecodes_path: data/tensor-new.pkl

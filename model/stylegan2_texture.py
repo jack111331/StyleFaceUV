@@ -338,6 +338,13 @@ class StyleFaceUV(pl.LightningModule):
         for p in model.parameters():
             p.requires_grad = flag
 
+    def save_as_gltf(self, style_code):
+        from utils.gltf_utils import output_mesh_to_gltf
+        coeff_3dmm = self.stylecode_to_3dmm_coeff_model(torch.flatten(style_code, start_dim=1))
+        _, _, diffuse_map, displacement_map = self(style_code, coeff_3dmm)
+        vertices, indices, uv_coord = self.pure_3dmm_model.output_mesh(coeff_3dmm, displacement_map)
+        output_mesh_to_gltf(vertices, indices, uv_coord, diffuse_map, "test.gltf")
+
     def forward(self, style_code, coeff_3dmm, diffuse_map=None, displacement_map=None, output_texture_maps=True):
         if diffuse_map is None or displacement_map is None:
             generated_texture_maps = self.generator_3d(style_code, truncation=1, truncation_latent=None, input_is_Wplus=True,
@@ -345,7 +352,6 @@ class StyleFaceUV(pl.LightningModule):
         if diffuse_map is None:
             diffuse_map = generated_texture_maps[0]
             diffuse_map = (diffuse_map + 1) / 2
-            diffuse_map = einops.rearrange(diffuse_map, 'b c h w -> b h w c')
 
         if displacement_map is None:
             displacement_map = generated_texture_maps[1]
@@ -355,6 +361,7 @@ class StyleFaceUV(pl.LightningModule):
         rendered_mask = (rendered_mask > 0)
         rendered_mask = einops.rearrange(rendered_mask, 'b h w c -> b c h w')
         recon_image = rendered_img[:, :, :, :3]
+        recon_image = torch.clamp(recon_image, 0, 1)
         recon_image = einops.rearrange(recon_image, 'b h w c -> b c h w')
         if output_texture_maps == True:
             return recon_image, rendered_mask, diffuse_map, displacement_map
@@ -429,8 +436,9 @@ class StyleFaceUV(pl.LightningModule):
             image_percept = sampled_image * rendered_mask.repeat(1, 3, 1, 1)
             perceptual_loss_v = torch.mean(self.PerceptLoss(image_percept * 2 - 1, recon_image * 2 - 1))
 
-            sym_gradleftmask = torch.unsqueeze(sym_gradleftmask, 3).repeat(1, 1, 1, 3)
+            sym_gradleftmask = torch.unsqueeze(sym_gradleftmask, 1).repeat(1, 3, 1, 1)
             weighted_mask, _, _, _, _, _ = self.pure_3dmm_model(sym_coeff_3dmm, sym_gradleftmask, displacement_map, need_illu=False)
+            weighted_mask = torch.clamp(weighted_mask, 0, 1)
             weighted_mask = weighted_mask[..., 0].detach()
 
             sym_recon_image, rendered_sym_mask = self(None, sym_coeff_3dmm.detach(), diffuse_map=diffuse_map, displacement_map=displacement_map, output_texture_maps=False)
@@ -471,10 +479,10 @@ class StyleFaceUV(pl.LightningModule):
     def get_gradmask(self, coeff_3dmm):
         gradient_map = Variable(torch.ones(coeff_3dmm.shape[0], 3, 256, 256) * 100, requires_grad=False).to(
             self.device)
-        gradient_map = gradient_map.permute(0, 2, 3, 1)
         grad_displacement_map = Variable(torch.ones(coeff_3dmm.shape[0], 3, 256, 256) * 0, requires_grad=True).to(
             self.device)
         grad_rendered_img, _, _, _, _, _ = self.pure_3dmm_model(coeff_3dmm.detach(), gradient_map, grad_displacement_map)
+        grad_rendered_img = torch.clamp(grad_rendered_img, 0, 255)
         grad_displacement_map.retain_grad()
         (torch.sum(grad_rendered_img[:, :, :, :3] * 255)).backward()
         gradmask = torch.sum(torch.abs(grad_displacement_map.grad), dim=1)  # (b, 256, 256)
@@ -488,8 +496,8 @@ class StyleFaceUV(pl.LightningModule):
         device = self.device
         style_code, image, coeff_3dmm = style_code.to(device), image.to(device), coeff_3dmm.to(device)
 
-        recon_image, _ = self(style_code, coeff_3dmm, output_texture_maps=False)
-        return recon_image, image
+        recon_image, _, diffuse_map, displacement_map = self(style_code, coeff_3dmm, output_texture_maps=True)
+        return recon_image, image, diffuse_map, displacement_map
 
     def validation_step(self, batch, batch_idx):
         # First we sample from original stylegan2 and measure reconstruction loss
@@ -507,9 +515,8 @@ class StyleFaceUV(pl.LightningModule):
 
         self.log_dict(val_loss_dict, logger=True, on_epoch=True)
 
-        # TODO In future plan we measure kid, fid
+        # TODO In future plan we measure kid, fid to evaluate the model performance
 
-# FIXME refactor
 class StylecodeTo3DMMCoeffMLP(nn.Module):
     def __init__(self, ckpt_path=None, MM_param_num=257):
         super(StylecodeTo3DMMCoeffMLP, self).__init__()
@@ -541,7 +548,12 @@ class StylecodeTo3DMMCoeffMLP(nn.Module):
             if 'Stylecode to 3DMM Coeff' in ckpt:
                 self.load_state_dict(ckpt['Stylecode to 3DMM Coeff'])
             else:
-                self.load_state_dict(ckpt)
+                new_state_dict = {}
+                for k in ckpt['state_dict'].keys():
+                    if k.startswith('stylecode_to_3dmm_coeff_model'):
+                        new_state_dict[k[len('stylecode_to_3dmm_coeff_model')+1:]] = ckpt['state_dict'][k]
+
+                self.load_state_dict(new_state_dict)
 
     def forward(self, stylecode):
         all_wo_tex = self.Net1(stylecode)
@@ -571,7 +583,12 @@ class StylecodeToPoseDirectionScalarMLP(nn.Module):
             if 'Stylecode to Pose Scalar' in ckpt:
                 self.load_state_dict(ckpt['Stylecode to Pose Scalar'])
             else:
-                self.load_state_dict(ckpt)
+                new_state_dict = {}
+                for k in ckpt['state_dict'].keys():
+                    if k.startswith('stylecode_to_scalar_model'):
+                        new_state_dict[k[len('stylecode_to_scalar_model')+1:]] = ckpt['state_dict'][k]
+
+                self.load_state_dict(new_state_dict)
 
     def forward(self, stylecode):
         return self.Net(stylecode)

@@ -25,5 +25,7 @@ pip:
   - einops
   - face_alignment==1.1.1
   - facenet-pytorch
-
+  - scikit-learn
+  - gradio
+  - pygltflib
 prefix: /tmp2/r10922033/anaconda3/envs/style_face_uv

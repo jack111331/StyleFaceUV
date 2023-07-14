@@ -1,16 +1,11 @@
-import os, copy
-
 import torch
 from torch.optim.lr_scheduler import MultiStepLR
 from utils.losses import l1loss
-from dataloader.dataset import StyleCode3DMMParamsDataset
 from torch.utils.data import DataLoader
 
 import pytorch_lightning as pl
 from utils.utility import instantiate_from_config
 import yaml
-
-debug_output = False
 
 class StylecodeTo3DCoeffTrainer(pl.LightningModule):
     def __init__(self, 
@@ -18,9 +13,8 @@ class StylecodeTo3DCoeffTrainer(pl.LightningModule):
                  ckpt_path=None):
         
         super().__init__()
-        self.stylecode_to_3dmm_coeff_model = instantiate_from_config(style_to_3dmm_coeff_config).eval()
+        self.stylecode_to_3dmm_coeff_model = instantiate_from_config(style_to_3dmm_coeff_config)
         
-        self.loss_dict = {}
         self.save_hyperparameters()
 
         if ckpt_path is not None:
@@ -57,10 +51,11 @@ if __name__ == '__main__':
     model.learning_rate = trainer_config['learning_rate']
 
     batch_size = trainer_config['batch_size']
-    dataset_dir = "./data/"
 
     train_proportion = trainer_config['train_proportion']
-    dataset = StyleCode3DMMParamsDataset(dataset_dir)
+
+    dataset_config = trainer_config['dataset_config']
+    dataset = instantiate_from_config(dataset_config)
 
     train_dataset, val_dataset = dataset[:int(len(dataset) * train_proportion)], dataset[int(len(dataset) * train_proportion):]
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)

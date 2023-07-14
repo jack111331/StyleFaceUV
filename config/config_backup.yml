@@ -16,12 +16,13 @@ model:
     style_to_pose_scalar_config:
       target: model.stylegan2_texture.StylecodeToPoseDirectionScalarMLP
       params: 
-        ckpt_path: ckpt/stylecode_to_yaw_angle/lightning_logs/version_0/checkpoints/epoch=24-step=55674.ckpt
+        ckpt_path: ckpt/stylecode_pose_scalar_mlp/best.pkl
 
     style_to_3dmm_coeff_config:
       target: model.stylegan2_texture.StylecodeTo3DMMCoeffMLP
       params: 
-        ckpt_path: ckpt/stylecode_to_3dmm_coeff/lightning_logs/version_0/checkpoints/epoch=24-step=55674.ckpt
+        ckpt_path: ckpt/stylecode_3dmm_coeff_mlp/best.pkl
+
     face_renderer_config:
       target: model.face_renderer.FaceRenderer
       params:

@@ -279,6 +279,24 @@ class FaceRenderer(nn.Module):
     def get_lms(face_shape, kp_inds):
         lms = face_shape[:, kp_inds, :]
         return lms
+    
+    def output_mesh(self, coeff_3dmm, displacement_map):
+        batch_num = coeff_3dmm.shape[0]
+        uv_coord_2 = self.uv_coord_2.repeat(batch_num, 1, 1, 1)
+        id_coeff, ex_coeff, _, angles, gamma, translation = self.split_3dmm_coeff(coeff_3dmm)
+        face_shape_ori = self.shape_formation(id_coeff, ex_coeff) #(b, 35709, 3)
+        uv_vertex = F.grid_sample(displacement_map, uv_coord_2.float(), mode='bilinear')
+        uv_vertex = torch.squeeze(uv_vertex, 2)
+        uv_vertex = uv_vertex.permute(0,2,1)
+        uv_vertex *= torch.tensor(0.01).to(self.device)
+        angles[:, 1] += np.pi
+        rotation = self.compute_rotation_matrix(angles)
+        face_shape = face_shape_ori + uv_vertex
+        face_shape_t = self.rigid_transform_block(face_shape, rotation, translation)
+
+        tri = self.tri - 1
+        # vertices, indices, uv_coord
+        return face_shape_t, tri.repeat(batch_num, 1, 1), (self.uv_coord_2.repeat(batch_num, 1, 1, 1).float() + 1) / 2
 
     def forward(self, coeff_3dmm, diffuse_map, displacement_map, need_illu=True):
         batch_num = coeff_3dmm.shape[0]
@@ -290,7 +308,7 @@ class FaceRenderer(nn.Module):
         uv_vertex = F.grid_sample(displacement_map, uv_coord_2.float(), mode='bilinear')
         uv_vertex = torch.squeeze(uv_vertex, 2)
         uv_vertex = uv_vertex.permute(0,2,1)
-        uv_vertex*= torch.tensor(0.01).to(self.device)
+        uv_vertex *= torch.tensor(0.01).to(self.device)
         face_shape = face_shape_ori + uv_vertex
 
         # Reconstruct face geometry from shape texture
@@ -304,7 +322,7 @@ class FaceRenderer(nn.Module):
         lms = torch.stack([lms[:, :, 0], self.img_size-lms[:, :, 1]], dim=2)
         tri = self.tri - 1
 
-        face_texture = F.grid_sample(diffuse_map.permute(0,3,1,2), uv_coord_2.float(), mode='bilinear')
+        face_texture = F.grid_sample(diffuse_map, uv_coord_2.float(), mode='bilinear')
         face_texture = torch.squeeze(face_texture, 2)
         face_texture = face_texture.permute(0,2,1)
         if need_illu==True:
@@ -315,5 +333,5 @@ class FaceRenderer(nn.Module):
 
         mesh = Meshes(verts=face_shape_t, faces=tri.repeat(batch_num, 1, 1), textures=face_color) # Meshes(Vertex, Faces, Texture)
         rendered_img = self.renderer(mesh) # 應是設定好了從canonical view來project
-        rendered_img = torch.clamp(rendered_img, 0, 255)
+        # rendered_img = torch.clamp(rendered_img, 0, 255)
         return rendered_img, lms, face_shape, mesh, coeff_3dmm, tri

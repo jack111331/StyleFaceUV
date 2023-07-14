@@ -1,0 +1,14 @@
+trainer:
+  learning_rate: 1.0e-05
+  batch_size: 16
+  train_proportion: 0.9
+  target: trainer_3dcoeff_lightning.StylecodeTo3DCoeffTrainer
+  params:
+    style_to_3dmm_coeff_config:
+      target: model.stylegan2_texture.StylecodeTo3DMMCoeffMLP
+
+  dataset_config:
+    target: dataloader.dataset.StyleCode3DMMParamsDataset
+    params:
+      coeff_3dmm_path: data/3DMMparam-new.pkl
+      stylecodes_path: data/tensor-new.pkl

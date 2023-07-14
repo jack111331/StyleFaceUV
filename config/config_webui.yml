@@ -12,7 +12,7 @@ model:
     latent_dim: 512
     n_mlp: 8
     gan_ckpt_path: ckpt/StyleGAN2_ffhq_resol=256_550000.pt
-
+    ckpt_path: ckpt/style_face_uv/lightning_logs/version_0/checkpoints/epoch=24-step=74624.ckpt
     style_to_pose_scalar_config:
       target: model.stylegan2_texture.StylecodeToPoseDirectionScalarMLP
       params: 

@@ -10,9 +10,9 @@ import multiprocessing
 import lmdb
 
 class StyleCode3DMMParamsDataset(Dataset):
-    def __init__(self, data_dir):
-        self.coeffs = torch.load(os.path.join(data_dir, '3DMMparam-new.pkl'))
-        self.stylecodes = torch.load(os.path.join(data_dir, 'tensor-new.pkl'))
+    def __init__(self, coeff_3dmm_path, stylecodes_path):
+        self.coeffs = torch.load(coeff_3dmm_path)
+        self.stylecodes = torch.load(stylecodes_path)
         self.data = []
         for i in range(int(self.coeffs.size()[0])):
             self.data.append([self.stylecodes[i], self.coeffs[i]])

@@ -3,11 +3,13 @@ import torch
 from operator import itemgetter
 from sklearn.svm import SVC
 from network.arch import Generator2D
-from network.arch import StylecodeTo3DMMCoeffMLP
-from utils.options import Option
-from trainer_3dcoeff import BestFirst3DCoeffCheckpointSaver
+from model.stylegan2_texture import StylecodeTo3DMMCoeffMLP
 
 debug_output = False
+example_num = 200000
+pose_direction_save_path = "./data/pose_direction-test.pkl"
+generator_2d_ckpt = './ckpt/StyleGAN2_ffhq_resol=256_550000.pt'
+stylecode_to_3dmm_coeff_ckpt = './ckpt/stylecode_to_3dmm_coeff/lightning_logs/version_1/checkpoints/epoch=24-step=55674.ckpt'
 
 '''
 Referenced from "Interpreting the Latent Space of GANs for Semantic Face Editing" that there is a "Hyperplane boundary"
@@ -18,34 +20,30 @@ We find the hyperplane its normal direction, so that we can control the pose of 
 '''
 
 if __name__ == '__main__':
-    option = Option("Pose Hyperplane Extraction")
-    args = option.parse_args()
-
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Setup model
-    g_ema = Generator2D(args.size, args.latent, args.n_mlp).to(device)
-    g_ema.load_state_dict(torch.load(args.generator_2d_ckpt)["g_ema"], strict=False)
-    stylecode_to_3dmm_coeff_model = StylecodeTo3DMMCoeffMLP().to(device)
-    stylecode_to_3dmm_saver = BestFirst3DCoeffCheckpointSaver(args.stylecode_3dmm_coeff_mlp_ckpt)
-    if stylecode_to_3dmm_saver.checkpoint != None:
-        stylecode_to_3dmm_saver.load_checkpoint(
-            models={"Stylecode to 3DMM Coeff": stylecode_to_3dmm_coeff_model},
-            optimizers={})
-    noise = torch.randn(args.exp_num, 512).to(device)
+    g_ema = Generator2D(256, 512, 8).to(device)
+    g_ema.load_state_dict(torch.load(generator_2d_ckpt)["g_ema"], strict=False)
+    stylecode_to_3dmm_coeff_model = StylecodeTo3DMMCoeffMLP(ckpt_path=stylecode_to_3dmm_coeff_ckpt).to(device)
+
+    noise = torch.randn(example_num, 512).to(device)
 
     g_ema.eval()
     stylecode_to_3dmm_coeff_model.eval()
     wplus = g_ema.get_latent_Wplus(noise)
-    coeffs = stylecode_to_3dmm_coeff_model(torch.flatten(wplus, start_dim=1))
-    # Get yaw angle from its representing dimension in 3DMM coefficients
-    coeffs = coeffs[:, args.coeff_yaw_angle_dim]
+
+    yaw_angle_coeffs = np.zeros((example_num))
+    batch_num = 50000
+    for idx in range(wplus.shape[0] // batch_num):
+        # Get yaw angle from its representing dimension in 3DMM coefficients (225: yaw angle)
+        yaw_angle_coeffs[idx * batch_num: (idx+1) * batch_num] = stylecode_to_3dmm_coeff_model(torch.flatten(wplus[idx * batch_num: (idx+1) * batch_num], start_dim=1))[:, 225].detach().cpu().numpy()
 
     predictions = []
-    for ind, item in enumerate(coeffs):
+    for ind, item in enumerate(yaw_angle_coeffs):
         predictions.append([ind, item.item()])
     predictions = sorted(predictions, key=itemgetter(1))  # yaw angle (3DMM coeff) from small to large
-    top_2_percent = int(args.exp_num * 0.02)
+    top_2_percent = int(example_num * 0.02)
     predictions_0 = np.array(predictions[:top_2_percent])
     predictions_1 = np.array(predictions[-top_2_percent:])
 
@@ -60,4 +58,4 @@ if __name__ == '__main__':
     classifier = clf.fit(W_space, labels)
     pose_normal_direction = classifier.coef_ / np.linalg.norm(classifier.coef_)
     pose_normal_direction = torch.tensor(pose_normal_direction)
-    torch.save(pose_normal_direction, args.pose_direction_save_path)
+    torch.save(pose_normal_direction, pose_direction_save_path)
