@@ -21,7 +21,7 @@ python webui.py
 ```
 
 Note that gradio and gltf doesn't support the external lighting condition, we just demonstrate it with default light setting of them.
-![](demo/demo.webm)
+![](demo/demo.webp)
 
 ## Training
 ### Dataset preparation
