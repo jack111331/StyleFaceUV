@@ -2,7 +2,7 @@
 # StyleFaceUV &mdash; Official PyTorch implementation
 This repository is the official implementation of **StyleFaceUV: A 3D Face UV Map Generator for View-Consistent Face Image Synthesis**.
 
-[[Paper (BMVC)]](https://bmvc2022.mpi-inf.mpg.de/0089.pdf)[[Project page]](https://bmvc2022.mpi-inf.mpg.de/89/)
+[[Paper (BMVC)](https://bmvc2022.mpi-inf.mpg.de/0089.pdf)][[Project page](https://bmvc2022.mpi-inf.mpg.de/89/)]
 
 # Environment setting
 Tested on Nvidia V100S, Ubuntu 18.04.5 LTS.
@@ -12,6 +12,8 @@ conda create -n style_face_uv python=3.8
 conda activate style_face_uv
 conda install -f environment.yml
 ```
+
+Download our additional required data and pre-trained model from [here](https://drive.google.com/file/d/1UQhSBV6iE2m9gokhU1yVDarXfghGrBfl/view?usp=sharing) and from [here](https://drive.google.com/file/d/1Bt6GluixWLA636j872GAbSs9L3t8HZZj/view?usp=sharing). Unzip them into "this_repo/" directory. As a result, there will be "this_repo/data" and "this_repo/ckpt" directories in this repo.
 
 ## Testing
 Run the following commands to open Gradio web ui for our demo.
@@ -29,7 +31,7 @@ Firstly, we need to make the synthetic dataset to train our "Style to Yaw Angle"
 
 Clone the [3DMM model fitting using Pytorch](https://github.com/ascust/3DMM-Fitting-Pytorch) repository and place it elsewhere.
 
-Here, we placed this repository at "this_repo/../" folder so that their fit_single_img.py is in "this_repo/../3DMM-Fitting-Pytorch".
+Here, we placed this repository at "this_repo/../" folder so that their fit_single_img.py is in "this_repo/../3DMM-Fitting-Pytorch/".
 
 After installing their repository following the instruction written in the README.md in their repo, runs the following command in "this_repo/".
 
@@ -44,7 +46,7 @@ python prepare_data.py data/train_stylegan_images/
 ```
 
 ### Train the "Style to 3Dcoeffs" module
-Making sure that you've downloaded the external required data at ??? and placed them into "this_repo/data" directory.
+Making sure that you've downloaded the external required data from [here](https://drive.google.com/file/d/1UQhSBV6iE2m9gokhU1yVDarXfghGrBfl/view?usp=sharing) and unzip them into "this_repo/" directory. As a result, there will be "this_repo/data" directory in this repo.
 
 Run the following commands to train our "Style to 3Dcoeffs" module, the checkpoints will be placed in "ckpt/stylecode_to_3dmm_coeff" directory.
 

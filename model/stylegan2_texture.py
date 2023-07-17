@@ -343,7 +343,8 @@ class StyleFaceUV(pl.LightningModule):
         coeff_3dmm = self.stylecode_to_3dmm_coeff_model(torch.flatten(style_code, start_dim=1))
         _, _, diffuse_map, displacement_map = self(style_code, coeff_3dmm)
         vertices, indices, uv_coord = self.pure_3dmm_model.output_mesh(coeff_3dmm, displacement_map)
-        output_mesh_to_gltf(vertices, indices, uv_coord, diffuse_map, "test.gltf")
+        os.makedirs("output", exist_ok=True)
+        output_mesh_to_gltf(vertices, indices, uv_coord, diffuse_map, "output/generated_face.gltf")
 
     def forward(self, style_code, coeff_3dmm, diffuse_map=None, displacement_map=None, output_texture_maps=True):
         if diffuse_map is None or displacement_map is None:

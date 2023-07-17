@@ -31,7 +31,7 @@ def get_select_index(evt: gr.SelectData):
 
 def generate_gltf_and_render_on_model3d(model):
     model.save_as_gltf(torch.Tensor(state.selected_style_code).to('cuda:0'))
-    return "test.gltf"
+    return "output/generated_face.gltf"
 
 if __name__ == '__main__':
 
